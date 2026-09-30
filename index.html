@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>check — 일정 관리</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="앱 탐색">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">✓</span><span>check</span></div>
+        <p class="sidebar-label">작업 공간</p>
+        <nav class="main-nav" aria-label="주 메뉴">
+          <button class="nav-item is-active" type="button" data-view="today" aria-current="page"><span aria-hidden="true">◫</span>오늘</button>
+          <button class="nav-item" type="button" data-view="calendar"><span aria-hidden="true">▦</span>캘린더</button>
+          <button class="nav-item" type="button" data-view="records"><span aria-hidden="true">▥</span>기록</button>
+          <button class="nav-item" type="button" data-view="settings"><span aria-hidden="true">⚙</span>설정</button>
+        </nav>
+        <p class="sidebar-note">하나씩 기록하고<br />차근차근 마무리하세요.</p>
+      </aside>
+
+      <div class="workspace">
+        <div class="topbar"><span>내 일정</span><span class="topbar-divider" aria-hidden="true">/</span><strong id="topbar-title">오늘</strong></div>
+        <div class="content">
+          <section id="today-view" class="page-view" aria-labelledby="today-heading">
+            <header class="page-header">
+              <p class="eyebrow">오늘의 작업</p>
+              <div class="header-row"><h1 id="today-heading">오늘 일정</h1><time id="today-date"></time></div>
+              <p class="page-description">해야 할 일을 적고, 진행 상태를 한눈에 확인하세요.</p>
+            </header>
+
+            <div class="summary-strip" aria-label="일정 요약">
+              <div><span>오늘 남은 일정</span><strong id="today-remaining">0개</strong></div>
+              <div><span>전체 일정</span><strong id="total-count">0개</strong></div>
+              <div><span>완료한 일정</span><strong id="done-count-summary">0개</strong></div>
+            </div>
+
+            <section class="schedule-panel" aria-labelledby="schedule-heading">
+              <h2 id="schedule-heading" class="visually-hidden">일정 관리</h2>
+              <form id="schedule-form" class="schedule-form">
+                <div class="form-heading"><h3 id="form-heading">새 일정</h3><button id="cancel-edit" class="text-button" type="button" hidden>수정 취소</button></div>
+                <div class="form-grid">
+                  <label class="field field-wide" for="schedule-title">제목<input id="schedule-title" name="title" type="text" placeholder="할 일을 입력하세요" autocomplete="off" /></label>
+                  <label class="field" for="schedule-date">날짜<input id="schedule-date" name="date" type="date" /></label>
+                  <label class="field" for="schedule-time">시간<input id="schedule-time" name="time" type="time" /></label>
+                  <label class="field" for="schedule-repeat">반복<select id="schedule-repeat" name="repeat"><option value="none">반복 없음</option><option value="daily">매일</option><option value="weekly">매주</option><option value="monthly">매월</option></select></label>
+                  <label class="field" for="schedule-category">카테고리<select id="schedule-category" name="category"><option value="공부">공부</option><option value="생활">생활</option><option value="약속">약속</option><option value="기타">기타</option></select></label>
+                  <label class="field field-wide" for="schedule-memo">메모<textarea id="schedule-memo" name="memo" rows="2" placeholder="필요한 내용을 적으세요"></textarea></label>
+                </div>
+                <p id="form-error" class="form-error" role="alert" hidden></p>
+                <div class="form-actions"><span>날짜를 비우면 날짜 없는 할 일로 저장됩니다.</span><button id="submit-button" class="add-button" type="submit">추가</button></div>
+              </form>
+
+              <div class="list-heading">
+                <div class="list-title"><h3>일정 목록</h3><span id="schedule-count" aria-live="polite">0개</span></div>
+                <div class="view-switch" role="group" aria-label="일정 보기 방식"><button id="list-view-button" class="view-button is-active" type="button" aria-pressed="true">목록</button><button id="graph-view-button" class="view-button" type="button" aria-pressed="false">그래프</button></div>
+              </div>
+              <div id="list-view"><p id="empty-message" class="empty-message">오늘 표시할 일정이 없습니다.</p><ul id="schedule-list" class="schedule-list" aria-label="오늘 일정 목록"></ul></div>
+              <div id="graph-view" class="graph-view" hidden><p id="graph-empty-message" class="empty-message">그래프로 볼 일정이 없습니다.</p><div id="graph-content" hidden>
+                <div class="graph-row"><span>대기</span><div class="graph-track"><div id="backlog-bar" class="graph-bar backlog-bar"></div></div><strong id="backlog-count">0개</strong></div>
+                <div class="graph-row"><span>할 일</span><div class="graph-track"><div id="todo-bar" class="graph-bar todo-bar"></div></div><strong id="todo-count">0개</strong></div>
+                <div class="graph-row"><span>진행 중</span><div class="graph-track"><div id="progress-bar" class="graph-bar progress-bar"></div></div><strong id="progress-count">0개</strong></div>
+                <div class="graph-row"><span>완료</span><div class="graph-track"><div id="done-bar" class="graph-bar done-bar"></div></div><strong id="done-count">0개</strong></div>
+                <div class="graph-row"><span>취소</span><div class="graph-track"><div id="canceled-bar" class="graph-bar canceled-bar"></div></div><strong id="canceled-count">0개</strong></div>
+              </div></div>
+            </section>
+          </section>
+
+          <section id="calendar-view" class="page-view" aria-labelledby="calendar-heading" hidden>
+            <header class="page-header"><p class="eyebrow">날짜별로 보기</p><h1 id="calendar-heading">캘린더</h1><p class="page-description">날짜를 누르면 그날의 일정을 볼 수 있습니다.</p></header>
+            <div class="calendar-toolbar"><button id="previous-month" class="icon-button" type="button" aria-label="이전 달">‹</button><h2 id="calendar-month"></h2><button id="next-month" class="icon-button" type="button" aria-label="다음 달">›</button></div>
+            <div class="calendar-weekdays" aria-hidden="true"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>
+            <div id="calendar-grid" class="calendar-grid" aria-label="월간 캘린더"></div>
+            <section class="day-panel" aria-labelledby="selected-day-heading"><h3 id="selected-day-heading"></h3><p id="selected-day-empty" class="muted-message">이날의 일정이 없습니다.</p><ul id="selected-day-list" class="compact-list"></ul></section>
+          </section>
+
+          <section id="records-view" class="page-view" aria-labelledby="records-heading" hidden>
+            <header class="page-header"><p class="eyebrow">한 일 돌아보기</p><h1 id="records-heading">기록</h1><p class="page-description">완료한 일정을 날짜와 카테고리별로 확인하세요.</p></header>
+            <div class="period-switch" role="group" aria-label="기록 기간"><button id="week-button" class="view-button is-active" type="button" aria-pressed="true">주간</button><button id="month-button" class="view-button" type="button" aria-pressed="false">월간</button></div>
+            <div class="record-summary"><span>선택한 기간에 완료한 일정</span><strong id="record-total">0개</strong></div>
+            <p id="record-line" class="record-line"></p>
+            <section class="record-section" aria-labelledby="timeline-heading"><h2 id="timeline-heading">날짜별 타임라인</h2><div id="timeline-graph" class="timeline-graph"></div></section>
+            <section class="record-section" aria-labelledby="category-heading"><h2 id="category-heading">카테고리별 비율</h2><div id="category-graph" class="category-graph"></div></section>
+          </section>
+
+          <section id="settings-view" class="page-view" aria-labelledby="settings-heading" hidden>
+            <header class="page-header"><p class="eyebrow">앱 설정</p><h1 id="settings-heading">설정</h1><p class="page-description">이 브라우저에서 일정 알림을 설정하세요.</p></header>
+            <div class="settings-card"><h2>브라우저 알림</h2><p>브라우저가 열려 있을 때 매일 오전 8시와 일정 1시간·10분 전에 알려줍니다.</p><button id="notification-button" class="add-button" type="button">알림 허용</button><p id="notification-status" class="settings-status" aria-live="polite"></p><div class="setting-options"><label><input id="day-before-option" type="checkbox" /> 하루 전 오후 8시 알림</label><label><input id="night-option" type="checkbox" /> 밤 9시 미완료 일정 알림</label></div></div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>
