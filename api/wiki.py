@@ -1,46 +1,21 @@
 """서버의 llm-wiki 허브를 앱에 연결한다.
 
-- 읽기: 허브 폴더의 마크다운 파일을 그대로 읽는다 (Claude 호출 없음).
-- 작업: 질문·기록·정리는 서버의 Claude Code에 /wiki:* 명령으로 맡긴다.
-  안전을 위해 셸(Bash)과 웹(WebFetch, WebSearch)은 항상 끄고,
-  질문은 읽기 도구만, 기록·정리는 허브 폴더 안의 파일 편집만 허용한다.
-  URL 수집이나 웹 리서치가 필요하면 서버에서 직접 claude를 실행한다.
+- 읽기: 허브 폴더(읽기 전용으로 연결)의 마크다운 파일을 그대로 읽는다.
+- 작업: 질문·기록·정리는 jobs 대기열에 넣고, 서버 본체의 작업기가 서버 Claude Code + llm-wiki로 실행한다.
+  셸(Bash)과 웹(WebFetch, WebSearch)은 항상 막고, 질문은 읽기 도구만, 기록·정리는 파일 편집만 허용한다.
 """
-import json
 import os
 import re
-import subprocess
-import threading
-import uuid
 from pathlib import Path
 
-from db import pool
+import jobs
 
 HUB = Path(os.environ.get("WIKI_HUB", str(Path.home() / "wiki"))).resolve()
-JOB_TIMEOUT = 900
-HIDDEN_ENV = ("APP_PASSWORD", "SESSION_SECRET", "DATABASE_URL", "POSTGRES_PASSWORD")
 SKIP_DIRS = {".obsidian", ".librarian", ".audit", ".sessions", ".processed", ".git", ".archive", ".skills"}
 TOPIC_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,60}$")
 READ_TOOLS = "Read,Glob,Grep"
 EDIT_TOOLS = "Read,Glob,Grep,Write,Edit"
-BLOCKED_TOOLS = "Bash,WebFetch,WebSearch,Task,NotebookEdit"
-_wake = threading.Event()
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS wiki_jobs (
-    id TEXT PRIMARY KEY,
-    action TEXT NOT NULL,
-    topic TEXT,
-    input TEXT NOT NULL DEFAULT '',
-    prompt TEXT NOT NULL,
-    tools TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'queued',
-    result TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    started_at TIMESTAMPTZ,
-    finished_at TIMESTAMPTZ
-);
-"""
 
 
 class WikiError(Exception):
@@ -148,84 +123,19 @@ def build(action: str, topic: str, text: str, options: dict) -> tuple[str, str]:
     raise WikiError("알 수 없는 작업입니다.")
 
 
-JOB_COLS = "id, action, topic, input, status, result, created_at, started_at, finished_at"
-
-
-def _job(row) -> dict:
-    job = dict(zip(JOB_COLS.split(", "), row))
-    for key in ("created_at", "started_at", "finished_at"):
-        job[key] = job[key].isoformat() if job[key] else None
-    return job
-
-
 def create_job(action: str, topic: str, text: str, options: dict) -> dict:
     prompt, tools = build(action, topic, text, options or {})
-    job_id = uuid.uuid4().hex[:12]
-    with pool.connection() as conn:
-        conn.execute("INSERT INTO wiki_jobs (id, action, topic, input, prompt, tools) VALUES (%s, %s, %s, %s, %s, %s)",
-                     (job_id, action, topic, (text or "").strip(), prompt, tools))
-    _wake.set()
-    return get_job(job_id)
+    job_id = jobs.enqueue("wiki", prompt, action=action, topic=topic or None, text=(text or "").strip(),
+                          tools=tools, settings="user", workdir="hub")
+    return jobs.get(job_id)
 
 
 def get_job(job_id: str) -> dict:
-    with pool.connection() as conn:
-        row = conn.execute(f"SELECT {JOB_COLS} FROM wiki_jobs WHERE id = %s", (job_id,)).fetchone()
-    if not row:
-        raise WikiError("작업을 찾을 수 없습니다.")
-    return _job(row)
-
-
-def list_jobs(limit: int = 20) -> list[dict]:
-    with pool.connection() as conn:
-        rows = conn.execute(f"SELECT {JOB_COLS} FROM wiki_jobs ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()
-    return [_job(r) for r in rows]
-
-
-def _run(prompt: str, tools: str) -> tuple[str, str]:
-    # 플러그인을 쓰려면 사용자 설정(user)을 읽되, 도구는 명시한 것만 허용하고 셸·웹은 막는다.
-    args = ["claude", "-p", prompt, "--setting-sources", "user", "--strict-mcp-config",
-            "--tools", tools, "--allowedTools", tools, "--disallowedTools", BLOCKED_TOOLS,
-            "--permission-mode", "dontAsk", "--no-session-persistence", "--output-format", "json"]
-    env = {k: v for k, v in os.environ.items() if k not in HIDDEN_ENV}
     try:
-        done = subprocess.run(args, cwd=str(HUB), env=env, stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=JOB_TIMEOUT)
-    except FileNotFoundError:
-        return "error", "서버에 Claude Code가 설치되어 있지 않습니다."
-    except subprocess.TimeoutExpired:
-        return "error", f"{JOB_TIMEOUT // 60}분 안에 끝나지 않아 멈췄습니다."
-    try:
-        data = json.loads(done.stdout)
-    except json.JSONDecodeError:
-        return "error", f"Claude Code 실행 실패: {(done.stderr or done.stdout).strip()[:300]}"
-    text = str(data.get("result") or "").strip()
-    if data.get("is_error"):
-        if "login" in text.lower():
-            text = "서버의 Claude Code 로그인이 풀렸습니다. 서버에서 claude를 실행해 /login 하세요."
-        return "error", text or "Claude Code 오류"
-    return "done", text
+        return jobs.get(job_id)
+    except jobs.JobError as error:
+        raise WikiError(str(error))
 
 
-def _worker():
-    while True:
-        with pool.connection() as conn:
-            row = conn.execute("SELECT id, prompt, tools FROM wiki_jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1").fetchone()
-            if row:
-                conn.execute("UPDATE wiki_jobs SET status = 'running', started_at = now() WHERE id = %s", (row[0],))
-        if not row:
-            _wake.wait(30)
-            _wake.clear()
-            continue
-        status, result = _run(row[1], row[2])
-        with pool.connection() as conn:
-            conn.execute("UPDATE wiki_jobs SET status = %s, result = %s, finished_at = now() WHERE id = %s",
-                         (status, result, row[0]))
-
-
-def start_worker() -> None:
-    with pool.connection() as conn:
-        conn.execute(SCHEMA)
-        conn.execute("UPDATE wiki_jobs SET status = 'error', result = '서버가 다시 시작되어 중단되었습니다.', "
-                     "finished_at = now() WHERE status = 'running'")
-    threading.Thread(target=_worker, name="wiki-jobs", daemon=True).start()
+def list_jobs() -> list[dict]:
+    return jobs.recent("wiki")

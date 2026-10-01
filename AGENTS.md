@@ -8,8 +8,8 @@
 - `app/layout.jsx`: HTML 문서 틀과 `style.css` 불러오기.
 - `app/page.jsx`: 화면과 React 상태 관리.
 - `app/planner.js`: 날짜·일정 계산. `app/api.js`: 서버 API 호출과 로그인 토큰.
-- `api/main.py`: FastAPI 라우트 (로그인, items, settings, notes, ask, integrations). `api/db.py` 테이블, `api/llm.py` Claude 호출(기본: 컨테이너 안 Claude Code CLI를 `claude -p`로 도구·설정·MCP를 모두 끄고 실행, 선택: Anthropic API 키), `api/integrations.py` Gmail·디스코드 수집, `api/secretbox.py` 비밀값 암호화.
-- `app/NotesView.jsx` 노트 화면, `app/IntegrationsPanel.jsx` 연동 설정, `app/markdown.jsx` 마크다운 렌더러(HTML 직접 삽입 금지).
+- `api/main.py`: FastAPI 라우트 (로그인, items, settings, wiki, worker, integrations). `api/db.py` 테이블, `api/jobs.py` Claude 작업 대기열, `api/wiki.py` llm-wiki 허브 읽기와 위키 작업, `api/llm.py` 일정 추출, `api/integrations.py` Gmail·디스코드 수집, `api/secretbox.py` 비밀값 암호화.
+- `app/WikiView.jsx` 위키 화면, `app/IntegrationsPanel.jsx` 연동 설정, `app/markdown.jsx` 마크다운 렌더러(HTML 직접 삽입 금지).
 - `style.css`: 전역 디자인. `next.config.mjs`는 정적 내보내기와 `BASE_PATH`(배포 시 `/check`)를 설정한다.
 - `Dockerfile`, `api/Dockerfile`, `compose.yml`, `deploy/`: 집 서버 배포 구성. `.github/workflows/ci.yml`은 빌드 검사만 한다.
 - `index.html`과 `app.js`는 이전 버전 및 데이터 이전용이다.
@@ -30,6 +30,7 @@
 - 예시 데이터는 가상의 내용만 쓴다. 개인정보, 비밀번호, API 키, 토큰을 코드나 문서에 넣지 않는다.
 - 일정과 설정은 집 서버의 Postgres에 저장한다. 사용자는 한 명이며 `APP_PASSWORD` 하나로 로그인한다. 비밀값은 서버의 `~/check/.env`에만 두고 저장소에 넣지 않는다.
 - 연동 비밀값은 설정 화면에서 받아 `SESSION_SECRET`으로 암호화해 DB에 저장한다. 화면에는 끝 네 글자만 보여준다.
+- Claude는 컨테이너에서 실행하지 않는다. 서버 본체의 `deploy/claude_worker.py`가 대기열에서 꺼내 서버 Claude Code로 실행한다. 셸·웹 도구는 항상 막는다. `deploy.sh`가 작업기를 띄우고 배포 때 재시작한다.
 - 일정 저장(PUT /api/items)은 `since` 이후 서버가 추가한 일정을 지우지 않는다. 이 규칙을 깨지 않는다.
 - 이전 버전의 저장 키 `study-planner-items`는 서버가 비어 있을 때 한 번 옮기는 용도로만 읽는다.
 

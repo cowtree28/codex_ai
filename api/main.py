@@ -19,11 +19,17 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel
 
 import integrations
+import jobs
 import wiki
 from db import init_db, pool
 
 APP_PASSWORD = os.environ["APP_PASSWORD"]
 SESSION_SECRET = os.environ["SESSION_SECRET"]
+
+
+def worker_token() -> str:
+    """서버 본체의 Claude 작업기가 쓰는 토큰. 같은 SESSION_SECRET에서 다른 값으로 만든다."""
+    return hmac.new(SESSION_SECRET.encode(), b"check-worker-v1", hashlib.sha256).hexdigest()
 
 
 def session_token() -> str:
@@ -34,7 +40,7 @@ def session_token() -> str:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    wiki.start_worker()
+    jobs.init()
     if os.environ.get("DISABLE_SYNC") != "1":
         integrations.start_background_loop()
     yield
@@ -192,6 +198,33 @@ def wiki_jobs():
 @app.get("/api/wiki/jobs/{job_id}", dependencies=auth)
 def wiki_job(job_id: str):
     return wiki_guard(lambda: wiki.get_job(job_id))
+
+
+# ---------- 서버 Claude 작업기 ----------
+def require_worker(request: Request) -> None:
+    if not hmac.compare_digest(request.headers.get("x-worker-token", ""), worker_token()):
+        raise HTTPException(status_code=401, detail="작업기 토큰이 올바르지 않습니다.")
+
+
+@app.post("/api/worker/claim", dependencies=[Depends(require_worker)])
+def worker_claim():
+    job = jobs.claim()
+    return job or Response(status_code=204)
+
+
+class FinishBody(BaseModel):
+    status: str
+    result: str = ""
+    structured: dict | list | None = None
+
+
+@app.post("/api/worker/jobs/{job_id}", dependencies=[Depends(require_worker)])
+def worker_finish(job_id: str, body: FinishBody):
+    try:
+        jobs.finish(job_id, body.status, body.result, body.structured)
+    except jobs.JobError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    return {"ok": True}
 
 
 # ---------- 연동 ----------
