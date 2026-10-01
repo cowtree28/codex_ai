@@ -7,8 +7,11 @@
 ## 파일 구성
 - `app/layout.jsx`: HTML 문서 틀과 `style.css` 불러오기.
 - `app/page.jsx`: 화면과 React 상태 관리.
-- `app/planner.js`: 날짜·일정·저장 데이터 계산.
-- `style.css`: 전역 디자인. `next.config.mjs`는 정적 내보내기와 Pages 경로를 설정한다. `.github/workflows/pages.yml`은 Pages 배포를 담당한다. `index.html`과 `app.js`는 이전 버전 및 데이터 이전용이다.
+- `app/planner.js`: 날짜·일정 계산. `app/api.js`: 서버 API 호출과 로그인 토큰.
+- `api/main.py`: FastAPI 저장 API (로그인, items, settings). Postgres에 저장한다.
+- `style.css`: 전역 디자인. `next.config.mjs`는 정적 내보내기와 `BASE_PATH`(배포 시 `/check`)를 설정한다.
+- `Dockerfile`, `api/Dockerfile`, `compose.yml`, `deploy/`: 집 서버 배포 구성. `.github/workflows/ci.yml`은 빌드 검사만 한다.
+- `index.html`과 `app.js`는 이전 버전 및 데이터 이전용이다.
 - `docs/`: 기획서·설계서·점검표·기록. 앱 코드를 넣지 않는다.
 
 ## 작업 규칙
@@ -24,13 +27,15 @@
 
 ## 데이터와 보안
 - 예시 데이터는 가상의 내용만 쓴다. 개인정보, 비밀번호, API 키, 토큰을 코드나 문서에 넣지 않는다.
-- 일정과 설정은 브라우저 `localStorage`에만 저장한다. 서버나 외부 저장소로 보내지 않는다.
-- 저장 키 `study-planner-items`와 기존 데이터 호환성을 유지한다.
+- 일정과 설정은 집 서버의 Postgres에 저장한다. 사용자는 한 명이며 `APP_PASSWORD` 하나로 로그인한다. 비밀값은 서버의 `~/check/.env`에만 두고 저장소에 넣지 않는다.
+- 이전 버전의 저장 키 `study-planner-items`는 서버가 비어 있을 때 한 번 옮기는 용도로만 읽는다.
 
 ## 실행 방법
 - 최초 실행: `npm ci` 다음 `npm run dev`.
 - 브라우저에서 `http://localhost:3000`을 연다. `index.html` 직접 열기는 이전 버전이다.
-- 정적 빌드는 `npm run build`로 `out/`에 생성한다. Pages 경로 확인은 `GITHUB_PAGES=true npm run build`로 한다. `main` 푸시 후 GitHub Actions가 배포한다.
+- 정적 빌드는 `npm run build`로 `out/`에 생성한다. 배포 경로 확인은 `BASE_PATH=/check npm run build`로 한다.
+- 전체 스택 확인은 `docker compose --env-file <비밀값 파일> up -d --build` 후 `http://localhost:3100/check/`.
+- `main`에 푸시하면 집 서버의 cron이 `deploy/deploy.sh`로 2분 안에 자동 배포한다. 바로 배포하려면 서버에서 `~/check/src/deploy/deploy.sh --force`.
 
 ## 확인 절차 (작업을 끝냈다고 말하기 전에)
 1. `npm run build`가 성공하고 브라우저 콘솔에 오류가 없다.
@@ -39,7 +44,8 @@
 4. 삭제하면 해당 일정만 사라진다.
 5. 빈 제목은 저장되지 않고 안내가 나온다.
 6. 새로고침해도 목록이 남는다.
-7. 캘린더·기록·설정 화면과 전역 CSS가 표시된다. Pages 빌드에서는 CSS/JS 경로가 `/codex_ai/`로 시작한다.
+7. 캘린더·기록·설정 화면과 전역 CSS가 표시된다. 배포 빌드에서는 CSS/JS 경로가 `/check/`로 시작한다.
+8. 틀린 비밀번호는 거절되고, 맞는 비밀번호로 들어간 뒤 새로고침해도 일정이 서버에서 다시 보인다.
 
 ## 완료 보고 형식
 - 바꾼 파일 목록과 파일별 변경 이유 한두 줄.

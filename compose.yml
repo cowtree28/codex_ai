@@ -1,0 +1,41 @@
+# 집 서버 배포 구성. 호스트의 127.0.0.1:3100 으로만 열고, 바깥 nginx가 /check/ 를 여기로 넘긴다.
+services:
+  web:
+    build:
+      context: .
+      args:
+        BASE_PATH: /check
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3100:80"
+    depends_on:
+      - api
+
+  api:
+    build: ./api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://check:${POSTGRES_PASSWORD}@db:5432/check
+      APP_PASSWORD: ${APP_PASSWORD}
+      SESSION_SECRET: ${SESSION_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: check
+      POSTGRES_DB: check
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U check -d check"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

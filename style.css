@@ -234,3 +234,13 @@ button:focus-visible, .schedule-status:focus-visible, .nav-item:focus-visible, .
   .calendar-day small { font-size: 9px; }
   .timeline-row { grid-template-columns: 72px 1fr 30px; }
 }
+
+/* 로그인 화면: 서버 비밀번호를 받아 들어간다. */
+.login-shell { display: grid; place-items: center; min-height: 100vh; padding: 24px; background: var(--bg, #fff); }
+.login-card { display: grid; gap: 14px; width: min(100%, 360px); padding: 28px 26px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.login-card h1 { margin: 6px 0 0; font-size: 20px; font-weight: 600; }
+.login-help { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.login-field { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.login-field input { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+.login-status { min-height: 18px; margin: 0; color: #b4232c; font-size: 13px; }
+.sync-error { margin-left: auto; color: #b4232c; font-size: 12px; }

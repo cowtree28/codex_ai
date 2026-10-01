@@ -1,0 +1,24 @@
+name: Build check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build static site with /check base path
+        run: npm run build
+        env:
+          BASE_PATH: /check
+      - name: Check API syntax
+        run: python3 -m py_compile api/main.py

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ALERT_KEY, SETTINGS_KEY, STORAGE_KEY, addDays, categories, completedRecords, dateFromISO, formatDay, loadItems, loadSettings, localISO, occurrencesOn, repeatLabels, statuses, todayEntries } from "./planner";
+import { api, clearToken, getToken, setToken } from "./api";
+import { ALERT_KEY, addDays, categories, completedRecords, dateFromISO, formatDay, loadItems, loadSettings, localISO, occurrencesOn, repeatLabels, statuses, todayEntries } from "./planner";
 
 const emptyForm = { title: "", memo: "", date: "", time: "", repeat: "none", category: "공부" };
 const viewNames = { today: "오늘", calendar: "캘린더", records: "기록", settings: "설정" };
@@ -31,6 +32,11 @@ function GraphRow({ label, count, total, barClass, percent }) {
 export default function Planner() {
   const [items, setItems] = useState([]);
   const [ready, setReady] = useState(false);
+  const [auth, setAuth] = useState("checking"); // checking | login | ok
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [syncError, setSyncError] = useState("");
   const [settings, setSettings] = useState({ dayBefore: false, night: false });
   const [permission, setPermission] = useState("default");
   const [settingError, setSettingError] = useState("");
@@ -54,16 +60,53 @@ export default function Planner() {
     setToday(now);
     setSelectedDate(now);
     setCalendarMonth(now.slice(0, 7));
-    setItems(loadItems());
-    setSettings(loadSettings());
     setPermission("Notification" in window ? Notification.permission : "unsupported");
-    setReady(true);
+    if (getToken()) loadFromServer(); else { setAuth("login"); setReady(true); }
   }, []);
 
-  // 저장에 성공했을 때만 화면 상태를 바꾼다.
+  // 서버에서 일정과 설정을 읽는다. 서버가 비어 있고 이 브라우저에 예전 일정이 있으면 한 번 올린다.
+  async function loadFromServer() {
+    setSyncError("");
+    try {
+      let [serverItems, serverSettings] = await Promise.all([api.items(), api.settings()]);
+      if (serverItems.length === 0) {
+        const local = loadItems();
+        if (local.length) { await api.saveItems(local); serverItems = local; }
+      }
+      if (Object.keys(serverSettings).length === 0) {
+        const local = loadSettings();
+        if (local.dayBefore || local.night) { await api.saveSettings(local); serverSettings = local; }
+      }
+      setItems(serverItems);
+      setSettings({ dayBefore: serverSettings.dayBefore === true, night: serverSettings.night === true });
+      setAuth("ok");
+    } catch (error) {
+      if (error.status === 401) { clearToken(); setAuth("login"); }
+      else setSyncError(error.message);
+    }
+    setReady(true);
+  }
+  async function submitLogin(event) {
+    event.preventDefault();
+    if (!password) { setLoginError("비밀번호를 입력해 주세요."); return; }
+    setLoginBusy(true); setLoginError("");
+    try {
+      const { token } = await api.login(password);
+      setToken(token); setPassword("");
+      await loadFromServer();
+    } catch (error) { setLoginError(error.message); }
+    setLoginBusy(false);
+  }
+  function logout() { clearToken(); setItems([]); setAuth("login"); }
+
+  // 화면을 먼저 바꾸고 서버에 저장한다. 실패하면 안내를 띄운다.
   function commitItems(next) {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); setItems(next); return true; }
-    catch { setFormError("브라우저 저장 공간에 저장하지 못했습니다."); return false; }
+    setItems(next); setSyncError("");
+    api.saveItems(next).catch((error) => {
+      if (error.status === 401) { clearToken(); setAuth("login"); }
+      else setSyncError(`서버에 저장하지 못했습니다. ${error.message}`);
+    });
+    return true;
   }
   function resetForm() { setForm(emptyForm); setEditingId(null); setDetailsOpen(false); setFormError(""); }
   function startEdit(item) {
@@ -115,8 +158,8 @@ export default function Planner() {
     if (date && date > localISO()) { setSelectedDate(date); setCalendarMonth(date.slice(0, 7)); setView("calendar"); }
   }
   function saveSettings(next) {
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); setSettings(next); setSettingError(""); }
-    catch { setSettingError("알림 설정을 저장하지 못했습니다."); }
+    setSettings(next); setSettingError("");
+    api.saveSettings(next).catch((error) => setSettingError(`알림 설정을 저장하지 못했습니다. ${error.message}`));
   }
   async function requestNotifications() {
     if (!("Notification" in window)) return;
@@ -186,6 +229,21 @@ export default function Planner() {
     const value = localISO(shifted);
     setCalendarMonth(value.slice(0, 7)); setSelectedDate(value);
   }
+  if (auth !== "ok") {
+    return <main className="login-shell">
+      <form className="login-card" onSubmit={submitLogin} aria-busy={loginBusy}>
+        <div className="brand"><span className="brand-mark" aria-hidden="true">✓</span><span>check</span></div>
+        <h1>내 일정에 들어가기</h1>
+        <p className="login-help">이 앱은 한 사람만 씁니다. 서버에 정해 둔 비밀번호를 입력하세요.</p>
+        {auth === "checking" ? <p className="login-status" aria-live="polite">{syncError || "서버에서 일정을 불러오는 중…"}</p> : <>
+          <label className="login-field"><span>비밀번호</span><input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} autoFocus /></label>
+          <button className="add-button" type="submit" disabled={loginBusy}>{loginBusy ? "확인 중…" : "들어가기"}</button>
+          <p className="login-status" role="alert">{loginError || syncError}</p>
+        </>}
+        {auth === "checking" && syncError && <button className="text-button" type="button" onClick={loadFromServer}>다시 시도</button>}
+      </form>
+    </main>;
+  }
   return <main className="app-shell">
     <aside className="sidebar" aria-label="앱 탐색">
       <div className="brand"><span className="brand-mark" aria-hidden="true">✓</span><span>check</span></div>
@@ -196,7 +254,7 @@ export default function Planner() {
       <p className="sidebar-label recent-label">{query.trim() ? "검색 결과" : "최근 일정"}</p>
       <div className="recent-items" aria-live="polite">{recent.length ? recent.map((item) => <button className="recent-item" type="button" key={item.id} onClick={() => startEdit(item)}>{item.title}</button>) : <p className="recent-empty">{query.trim() ? "검색 결과 없음" : "일정 없음"}</p>}</div>
     </aside>
-    <div className="workspace"><div className="topbar"><span>내 일정</span><span className="topbar-divider" aria-hidden="true">/</span><strong>{viewNames[view]}</strong></div><div className="content">
+    <div className="workspace"><div className="topbar"><span>내 일정</span><span className="topbar-divider" aria-hidden="true">/</span><strong>{viewNames[view]}</strong>{syncError && <span className="sync-error" role="alert">{syncError}</span>}</div><div className="content">
       <section id="today-view" className="page-view" aria-labelledby="today-heading" hidden={view !== "today"}>
         <header className="page-header"><div className="header-row"><h1 id="today-heading">오늘 일정</h1><time dateTime={today}>{today && new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" }).format(dateFromISO(today))}</time></div></header>
         <section className="schedule-panel" aria-labelledby="schedule-heading"><h2 id="schedule-heading" className="visually-hidden">일정 관리</h2>
@@ -227,7 +285,7 @@ export default function Planner() {
         <section className="day-panel" aria-labelledby="selected-day-heading"><h3 id="selected-day-heading">{selectedDate && formatDay(selectedDate)} 일정</h3>{!dayEntries.length && <p className="muted-message">일정 없음</p>}<ul className="compact-list">{dayEntries.map((entry) => <Entry key={`${entry.item.id}-${entry.day}`} entry={entry} onStatus={changeStatus} onEdit={startEdit} onDelete={deleteItem} />)}</ul></section>
       </section>
       <section id="records-view" className="page-view" aria-labelledby="records-heading" hidden={view !== "records"}><header className="page-header"><h1 id="records-heading">기록</h1></header><div className="period-switch" role="group" aria-label="기록 기간">{[["week", "주간"], ["month", "월간"]].map(([key, label]) => <button key={key} className={`view-button ${recordPeriod === key ? "is-active" : ""}`} type="button" aria-pressed={recordPeriod === key} onClick={() => setRecordPeriod(key)}>{label}</button>)}</div><div className="record-summary"><span>선택한 기간에 완료한 일정</span><strong>{records.length}개</strong></div><section className="record-section" aria-labelledby="timeline-heading"><h2 id="timeline-heading">날짜별 타임라인</h2><div className="timeline-graph">{recordDates.map((day) => { const done = records.filter((record) => record.day === day); return <div className="timeline-row" key={day}><span>{formatDay(day)}</span><div className="graph-track"><div className="graph-bar done-bar" style={{ width: `${done.length / maxRecords * 100}%` }} /></div><strong>{done.length}개</strong>{done.length > 0 && <small>{done.map((record) => record.title).join(" · ")}</small>}</div>; })}</div></section><section className="record-section" aria-labelledby="category-heading"><h2 id="category-heading">카테고리별 비율</h2><div className="category-graph">{categories.map((category) => <GraphRow key={category} label={category} count={records.filter((record) => record.category === category).length} total={records.length} barClass="category-bar" percent />)}</div></section></section>
-      <section id="settings-view" className="page-view" aria-labelledby="settings-heading" hidden={view !== "settings"}><header className="page-header"><h1 id="settings-heading">설정</h1></header><div className="settings-card"><h2>브라우저 알림</h2><p className="info-callout">알림은 브라우저가 열려 있을 때만 작동합니다. 오전 8시 요약, 일정 1시간·10분 전 알림.</p><button className="add-button" type="button" disabled={permission === "granted" || permission === "unsupported"} onClick={requestNotifications}>알림 허용</button><p className="settings-status" aria-live="polite">{settingError || (permission === "unsupported" ? "이 브라우저는 알림을 지원하지 않습니다." : permission === "granted" ? "알림 허용됨" : permission === "denied" ? "브라우저 설정에서 알림 권한을 바꿔 주세요." : "")}</p><div className="setting-options"><label><input type="checkbox" checked={settings.dayBefore} onChange={(event) => saveSettings({ ...settings, dayBefore: event.target.checked })} /> 하루 전 오후 8시 알림</label><label><input type="checkbox" checked={settings.night} onChange={(event) => saveSettings({ ...settings, night: event.target.checked })} /> 밤 9시 미완료 일정 알림</label></div></div></section>
+      <section id="settings-view" className="page-view" aria-labelledby="settings-heading" hidden={view !== "settings"}><header className="page-header"><h1 id="settings-heading">설정</h1></header><div className="settings-card"><h2>브라우저 알림</h2><p className="info-callout">알림은 브라우저가 열려 있을 때만 작동합니다. 오전 8시 요약, 일정 1시간·10분 전 알림.</p><button className="add-button" type="button" disabled={permission === "granted" || permission === "unsupported"} onClick={requestNotifications}>알림 허용</button><p className="settings-status" aria-live="polite">{settingError || (permission === "unsupported" ? "이 브라우저는 알림을 지원하지 않습니다." : permission === "granted" ? "알림 허용됨" : permission === "denied" ? "브라우저 설정에서 알림 권한을 바꿔 주세요." : "")}</p><div className="setting-options"><label><input type="checkbox" checked={settings.dayBefore} onChange={(event) => saveSettings({ ...settings, dayBefore: event.target.checked })} /> 하루 전 오후 8시 알림</label><label><input type="checkbox" checked={settings.night} onChange={(event) => saveSettings({ ...settings, night: event.target.checked })} /> 밤 9시 미완료 일정 알림</label></div></div><div className="settings-card"><h2>계정</h2><p className="info-callout">일정은 서버에 저장되어 어느 기기에서든 같은 비밀번호로 볼 수 있습니다.</p><button className="text-button" type="button" onClick={logout}>이 기기에서 로그아웃</button></div></section>
     </div></div>
   </main>;
 }
