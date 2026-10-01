@@ -2,25 +2,30 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, clearToken, getToken, setToken } from "./api";
+import IntegrationsPanel from "./IntegrationsPanel";
+import NotesView from "./NotesView";
 import { ALERT_KEY, addDays, categories, completedRecords, dateFromISO, formatDay, loadItems, loadSettings, localISO, occurrencesOn, repeatLabels, statuses, todayEntries } from "./planner";
 
 const emptyForm = { title: "", memo: "", date: "", time: "", repeat: "none", category: "공부" };
-const viewNames = { today: "오늘", calendar: "캘린더", records: "기록", settings: "설정" };
+const viewNames = { today: "오늘", calendar: "캘린더", records: "기록", notes: "노트", settings: "설정" };
+const sourceLabels = { gmail: "메일", discord: "디스코드" };
 const icons = {
   today: <><path d="M4 5.5h16v13H4zM8 3.5v4M16 3.5v4M4 9.5h16" /><path d="m9 14 2 2 4-4" /></>,
   calendar: <><path d="M4 5.5h16v14H4zM8 3.5v4M16 3.5v4M4 9.5h16M8 13h2M14 13h2M8 16.5h2" /></>,
   records: <><path d="M5 4.5h14v15H5zM8.5 9h7M8.5 12.5h7M8.5 16h4" /></>,
+  notes: <><path d="M6 3.5h9l3 3v14H6z" /><path d="M9 10h6M9 13.5h6M9 17h3" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4" /></>,
 };
 
-function Entry({ entry, onStatus, onEdit, onDelete }) {
+function Entry({ entry, onStatus, onEdit, onDelete, onNote }) {
   const { item, day, status } = entry;
-  const meta = [day ? formatDay(day) : "날짜 없음", item.time, item.category || "기타", repeatLabels[item.repeat]].filter(Boolean);
+  const meta = [day ? formatDay(day) : "날짜 없음", item.time, item.category || "기타", repeatLabels[item.repeat], sourceLabels[item.source]].filter(Boolean);
+  const sourceName = sourceLabels[item.source] ? `${sourceLabels[item.source]}에서 자동 추가` : item.repeat && item.repeat !== "none" ? "반복 일정" : "직접 추가";
   return <li className={`schedule-item status-${status}`}>
-    <span className="source-icon" aria-label={item.repeat && item.repeat !== "none" ? "반복 일정" : "직접 추가"}>{item.repeat && item.repeat !== "none" ? "↻" : "•"}</span>
+    <span className="source-icon" aria-label={sourceName} title={item.sourceRef || sourceName}>{item.source === "gmail" ? "✉" : item.source === "discord" ? "#" : item.repeat && item.repeat !== "none" ? "↻" : "•"}</span>
     <select className="schedule-status" aria-label={`${item.title} 상태`} value={status} onChange={(event) => onStatus(item, day, event.target.value)}>{statuses.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select>
     <div className="schedule-details"><span className="schedule-title">{item.title}</span><small className="schedule-meta">{meta.map((value, index) => <span className="meta-token" key={`${value}-${index}`}>{value}</span>)}</small>{item.memo && <span className="schedule-memo">{item.memo}</span>}</div>
-    <button className="text-button" type="button" aria-label={`${item.title} 수정`} onClick={() => onEdit(item)}>수정</button>
+    {onNote && <button className="text-button" type="button" aria-label={`${item.title} 노트`} onClick={() => onNote(item)}>노트</button>}<button className="text-button" type="button" aria-label={`${item.title} 수정`} onClick={() => onEdit(item)}>수정</button>
     <button className="delete-button" type="button" aria-label={`${item.title} 삭제`} onClick={() => onDelete(item)}>삭제</button>
   </li>;
 }
@@ -37,6 +42,7 @@ export default function Planner() {
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [syncError, setSyncError] = useState("");
+  const [noteRequest, setNoteRequest] = useState(null); // 일정에서 노트를 열 때 {title, itemId}
   const [settings, setSettings] = useState({ dayBefore: false, night: false });
   const [permission, setPermission] = useState("default");
   const [settingError, setSettingError] = useState("");
@@ -98,6 +104,16 @@ export default function Planner() {
     setLoginBusy(false);
   }
   function logout() { clearToken(); setItems([]); setAuth("login"); }
+  function authLost() { clearToken(); setAuth("login"); }
+  // 서버가 메일·디스코드에서 추가한 일정을 다시 읽는다. 일정을 고치는 중이면 건너뛴다.
+  async function reloadItems() {
+    try { setItems(await api.items()); } catch (error) { if (error.status === 401) authLost(); }
+  }
+  function openItemNote(item) { setNoteRequest({ title: item.title, itemId: item.id }); setView("notes"); }
+  function markReviewed(ids) {
+    const now = new Date().toISOString();
+    commitItems(items.map((item) => ids.includes(item.id) ? { ...item, aiReviewed: true, updatedAt: now } : item));
+  }
 
   // 화면을 먼저 바꾸고 서버에 저장한다. 실패하면 안내를 띄운다.
   function commitItems(next) {
@@ -224,6 +240,14 @@ export default function Planner() {
     return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
   }, [ready, items, settings]);
 
+  useEffect(() => {
+    if (auth !== "ok") return undefined;
+    const tick = () => { if (!document.hidden && !editingId) reloadItems(); };
+    const timer = setInterval(tick, 60000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", tick); };
+  }, [auth, editingId]);
+  const aiNew = items.filter((item) => item.aiAdded && !item.aiReviewed);
   function moveMonth(direction) {
     const shifted = new Date(calendarYear, calendarIndex + direction, 1);
     const value = localISO(shifted);
@@ -270,8 +294,8 @@ export default function Planner() {
               </div></details></div>
             <p className="form-error" role="alert" hidden={!formError}>{formError}</p><div className="form-actions"><button id="submit-button" className="add-button" type="submit">{editingId ? "저장" : "추가"}</button></div>
           </form>
-          <div className="list-heading"><div className="list-title"><h3>일정 목록</h3><span id="schedule-count" aria-live="polite">{visibleEntries.length}개</span></div><div className="summary-strip" aria-label="일정 요약"><div><span>남은 일정</span><strong>{entries.filter(({ status }) => !["done", "canceled"].includes(status)).length}개</strong></div><div><span>전체</span><strong>{items.length}개</strong></div><div><span>완료</span><strong>{entries.filter(({ status }) => status === "done").length}개</strong></div></div><div className="list-actions"><label className="filter-field" htmlFor="filter-status" hidden={!listMode}>상태<select id="filter-status" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">전체</option>{statuses.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label><div className="view-switch" role="group" aria-label="일정 보기 방식"><button className={`view-button ${listMode ? "is-active" : ""}`} type="button" aria-pressed={listMode} onClick={() => setListMode(true)}>목록</button><button className={`view-button ${!listMode ? "is-active" : ""}`} type="button" aria-pressed={!listMode} onClick={() => setListMode(false)}>그래프</button></div></div></div>
-          <div hidden={!listMode}>{!visibleEntries.length && <p className="empty-message">{filter === "all" ? "일정 없음" : "해당 상태의 일정 없음"}</p>}<ul className="schedule-list" aria-label="오늘 일정 목록">{visibleEntries.map((entry) => <Entry key={`${entry.item.id}-${entry.day || "none"}`} entry={entry} onStatus={changeStatus} onEdit={startEdit} onDelete={deleteItem} />)}</ul></div>
+          {aiNew.length > 0 && <section className="ai-box" aria-labelledby="ai-box-heading"><div className="ai-box-head"><h3 id="ai-box-heading">AI가 새로 추가한 일정 <span>{aiNew.length}개</span></h3><button className="text-button" type="button" onClick={() => markReviewed(aiNew.map((item) => item.id))}>모두 확인</button></div><ul>{aiNew.map((item) => <li key={item.id}><div><strong>{item.title}</strong><small>{[item.date || "날짜 없음", item.time, sourceLabels[item.source], item.sourceRef].filter(Boolean).join(" · ")}</small></div><button className="text-button" type="button" onClick={() => startEdit(item)}>수정</button><button className="delete-button" type="button" onClick={() => deleteItem(item)}>삭제</button><button className="text-button" type="button" onClick={() => markReviewed([item.id])}>맞아요</button></li>)}</ul></section>}<div className="list-heading"><div className="list-title"><h3>일정 목록</h3><span id="schedule-count" aria-live="polite">{visibleEntries.length}개</span></div><div className="summary-strip" aria-label="일정 요약"><div><span>남은 일정</span><strong>{entries.filter(({ status }) => !["done", "canceled"].includes(status)).length}개</strong></div><div><span>전체</span><strong>{items.length}개</strong></div><div><span>완료</span><strong>{entries.filter(({ status }) => status === "done").length}개</strong></div></div><div className="list-actions"><label className="filter-field" htmlFor="filter-status" hidden={!listMode}>상태<select id="filter-status" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">전체</option>{statuses.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label><div className="view-switch" role="group" aria-label="일정 보기 방식"><button className={`view-button ${listMode ? "is-active" : ""}`} type="button" aria-pressed={listMode} onClick={() => setListMode(true)}>목록</button><button className={`view-button ${!listMode ? "is-active" : ""}`} type="button" aria-pressed={!listMode} onClick={() => setListMode(false)}>그래프</button></div></div></div>
+          <div hidden={!listMode}>{!visibleEntries.length && <p className="empty-message">{filter === "all" ? "일정 없음" : "해당 상태의 일정 없음"}</p>}<ul className="schedule-list" aria-label="오늘 일정 목록">{visibleEntries.map((entry) => <Entry key={`${entry.item.id}-${entry.day || "none"}`} entry={entry} onStatus={changeStatus} onEdit={startEdit} onDelete={deleteItem} onNote={openItemNote} />)}</ul></div>
           <div className="graph-view" hidden={listMode}>{!entries.length ? <p className="empty-message">일정 없음</p> : statuses.map(({ value, label }) => <GraphRow key={value} label={label} count={entries.filter(({ status }) => status === value).length} total={entries.length} barClass={`${value}-bar`} />)}</div>
         </section>
       </section>
@@ -282,10 +306,11 @@ export default function Planner() {
           const iso = localISO(new Date(calendarYear, calendarIndex, index + 1)), count = occurrencesOn(items, iso).length;
           return <button className={`calendar-day ${iso === today ? "is-today" : ""} ${iso === selectedDate ? "is-selected" : ""}`} type="button" key={iso} aria-label={`${formatDay(iso)} 일정 ${count}개`} onClick={() => setSelectedDate(iso)}><span>{index + 1}</span>{count > 0 && <small>{count}개</small>}</button>;
         })}</div>
-        <section className="day-panel" aria-labelledby="selected-day-heading"><h3 id="selected-day-heading">{selectedDate && formatDay(selectedDate)} 일정</h3>{!dayEntries.length && <p className="muted-message">일정 없음</p>}<ul className="compact-list">{dayEntries.map((entry) => <Entry key={`${entry.item.id}-${entry.day}`} entry={entry} onStatus={changeStatus} onEdit={startEdit} onDelete={deleteItem} />)}</ul></section>
+        <section className="day-panel" aria-labelledby="selected-day-heading"><h3 id="selected-day-heading">{selectedDate && formatDay(selectedDate)} 일정</h3>{!dayEntries.length && <p className="muted-message">일정 없음</p>}<ul className="compact-list">{dayEntries.map((entry) => <Entry key={`${entry.item.id}-${entry.day}`} entry={entry} onStatus={changeStatus} onEdit={startEdit} onDelete={deleteItem} onNote={openItemNote} />)}</ul></section>
       </section>
       <section id="records-view" className="page-view" aria-labelledby="records-heading" hidden={view !== "records"}><header className="page-header"><h1 id="records-heading">기록</h1></header><div className="period-switch" role="group" aria-label="기록 기간">{[["week", "주간"], ["month", "월간"]].map(([key, label]) => <button key={key} className={`view-button ${recordPeriod === key ? "is-active" : ""}`} type="button" aria-pressed={recordPeriod === key} onClick={() => setRecordPeriod(key)}>{label}</button>)}</div><div className="record-summary"><span>선택한 기간에 완료한 일정</span><strong>{records.length}개</strong></div><section className="record-section" aria-labelledby="timeline-heading"><h2 id="timeline-heading">날짜별 타임라인</h2><div className="timeline-graph">{recordDates.map((day) => { const done = records.filter((record) => record.day === day); return <div className="timeline-row" key={day}><span>{formatDay(day)}</span><div className="graph-track"><div className="graph-bar done-bar" style={{ width: `${done.length / maxRecords * 100}%` }} /></div><strong>{done.length}개</strong>{done.length > 0 && <small>{done.map((record) => record.title).join(" · ")}</small>}</div>; })}</div></section><section className="record-section" aria-labelledby="category-heading"><h2 id="category-heading">카테고리별 비율</h2><div className="category-graph">{categories.map((category) => <GraphRow key={category} label={category} count={records.filter((record) => record.category === category).length} total={records.length} barClass="category-bar" percent />)}</div></section></section>
-      <section id="settings-view" className="page-view" aria-labelledby="settings-heading" hidden={view !== "settings"}><header className="page-header"><h1 id="settings-heading">설정</h1></header><div className="settings-card"><h2>브라우저 알림</h2><p className="info-callout">알림은 브라우저가 열려 있을 때만 작동합니다. 오전 8시 요약, 일정 1시간·10분 전 알림.</p><button className="add-button" type="button" disabled={permission === "granted" || permission === "unsupported"} onClick={requestNotifications}>알림 허용</button><p className="settings-status" aria-live="polite">{settingError || (permission === "unsupported" ? "이 브라우저는 알림을 지원하지 않습니다." : permission === "granted" ? "알림 허용됨" : permission === "denied" ? "브라우저 설정에서 알림 권한을 바꿔 주세요." : "")}</p><div className="setting-options"><label><input type="checkbox" checked={settings.dayBefore} onChange={(event) => saveSettings({ ...settings, dayBefore: event.target.checked })} /> 하루 전 오후 8시 알림</label><label><input type="checkbox" checked={settings.night} onChange={(event) => saveSettings({ ...settings, night: event.target.checked })} /> 밤 9시 미완료 일정 알림</label></div></div><div className="settings-card"><h2>계정</h2><p className="info-callout">일정은 서버에 저장되어 어느 기기에서든 같은 비밀번호로 볼 수 있습니다.</p><button className="text-button" type="button" onClick={logout}>이 기기에서 로그아웃</button></div></section>
+      <section id="settings-view" className="page-view" aria-labelledby="settings-heading" hidden={view !== "settings"}><header className="page-header"><h1 id="settings-heading">설정</h1></header><div className="settings-card"><h2>브라우저 알림</h2><p className="info-callout">알림은 브라우저가 열려 있을 때만 작동합니다. 오전 8시 요약, 일정 1시간·10분 전 알림.</p><button className="add-button" type="button" disabled={permission === "granted" || permission === "unsupported"} onClick={requestNotifications}>알림 허용</button><p className="settings-status" aria-live="polite">{settingError || (permission === "unsupported" ? "이 브라우저는 알림을 지원하지 않습니다." : permission === "granted" ? "알림 허용됨" : permission === "denied" ? "브라우저 설정에서 알림 권한을 바꿔 주세요." : "")}</p><div className="setting-options"><label><input type="checkbox" checked={settings.dayBefore} onChange={(event) => saveSettings({ ...settings, dayBefore: event.target.checked })} /> 하루 전 오후 8시 알림</label><label><input type="checkbox" checked={settings.night} onChange={(event) => saveSettings({ ...settings, night: event.target.checked })} /> 밤 9시 미완료 일정 알림</label></div></div><div className="settings-card"><h2>계정</h2><p className="info-callout">일정은 서버에 저장되어 어느 기기에서든 같은 비밀번호로 볼 수 있습니다.</p><button className="text-button" type="button" onClick={logout}>이 기기에서 로그아웃</button></div><IntegrationsPanel active={view === "settings"} onItemsChanged={reloadItems} onAuthError={authLost} /></section>
+      <NotesView active={view === "notes"} items={items} onAuthError={authLost} request={noteRequest} onRequestHandled={() => setNoteRequest(null)} />
     </div></div>
   </main>;
 }

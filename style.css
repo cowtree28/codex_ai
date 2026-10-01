@@ -244,3 +244,66 @@ button:focus-visible, .schedule-status:focus-visible, .nav-item:focus-visible, .
 .login-field input { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 .login-status { min-height: 18px; margin: 0; color: #b4232c; font-size: 13px; }
 .sync-error { margin-left: auto; color: #b4232c; font-size: 12px; }
+
+/* AI가 새로 추가한 일정 상자 */
+.ai-box { margin-top: 22px; padding: 14px 16px; border: 1px solid #d9dcf6; border-radius: 10px; background: #f6f7fe; }
+.ai-box-head { display: flex; align-items: center; justify-content: space-between; }
+.ai-box h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.ai-box h3 span { margin-left: 6px; color: var(--muted); font-weight: 400; }
+.ai-box ul { margin: 10px 0 0; padding: 0; list-style: none; }
+.ai-box li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid #e3e5f7; }
+.ai-box li > div { display: grid; flex: 1; min-width: 0; }
+.ai-box small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 노트(개인 위키) */
+.notes-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.notes-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ask-box { display: flex; gap: 8px; margin-bottom: 14px; }
+.ask-box input { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+.ai-answer { margin-bottom: 14px; padding: 12px 14px; border-radius: 8px; background: var(--hover); font-size: 14px; }
+.ai-answer small { color: var(--muted); }
+.notes-layout { display: grid; grid-template-columns: 240px 1fr; gap: 18px; align-items: start; }
+.notes-list input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13px; }
+.notes-list ul { margin: 8px 0 0; padding: 0; list-style: none; }
+.note-row { display: grid; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px; background: none; text-align: left; cursor: pointer; font: inherit; }
+.note-row:hover, .note-row.is-active { background: var(--hover); }
+.note-row strong { font-size: 14px; font-weight: 500; }
+.note-row small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-pane { min-height: 320px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px; }
+.note-empty { color: var(--muted); }
+.note-view-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.note-view-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.note-meta { color: var(--muted); font-size: 13px; }
+.note-editor { display: grid; gap: 10px; }
+.note-title-input { padding: 8px 0; border: 0; border-bottom: 1px solid var(--line); font: inherit; font-size: 20px; font-weight: 600; outline: none; }
+.note-item-field { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.note-item-field select { max-width: 320px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+.note-editor textarea { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; font: 14px/1.6 ui-monospace, "D2Coding", monospace; resize: vertical; }
+.note-editor-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.markdown { font-size: 15px; line-height: 1.7; }
+.markdown h3, .markdown h4, .markdown h5 { margin: 18px 0 6px; }
+.markdown p { margin: 6px 0; }
+.markdown code { padding: 1px 4px; border-radius: 4px; background: var(--hover); font-size: 13px; }
+.markdown pre { padding: 10px 12px; border-radius: 8px; background: var(--hover); overflow-x: auto; }
+.markdown blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid var(--line); color: var(--muted); }
+.wiki-link { padding: 0 2px; border: 0; background: none; color: #5e6ad2; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.wiki-link.is-missing { color: var(--subtle); text-decoration-style: dashed; }
+.note-links { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); }
+.note-links h3 { margin: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.note-links .wiki-link { display: block; margin: 2px 0; text-align: left; }
+
+/* 연동 설정 */
+.integration-card { display: grid; gap: 10px; }
+.integration-field { display: grid; gap: 4px; color: var(--muted); font-size: 13px; }
+.integration-field em { margin-left: 6px; color: #36947a; font-style: normal; }
+.integration-field input, .integration-field select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: inherit; font: inherit; font-size: 14px; }
+.integration-toggle { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.integration-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.integration-status, .integration-message { margin: 0; color: #36947a; font-size: 13px; }
+.integration-status.is-error, .integration-message.is-error { color: #b4232c; }
+.settings-card + .settings-card { margin-top: 16px; }
+
+@media (max-width: 760px) {
+  .notes-layout, .note-links { grid-template-columns: 1fr; }
+  .ask-box { flex-direction: column; }
+}
