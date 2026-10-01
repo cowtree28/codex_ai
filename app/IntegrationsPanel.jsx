@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 
-const blank = { llm: { api_key: "", model: "" }, gmail: { address: "", app_password: "", enabled: false }, discord: { bot_token: "", channel_ids: "", enabled: false } };
+const blank = { llm: { provider: "claude_code", oauth_token: "", api_key: "", model: "" }, gmail: { address: "", app_password: "", enabled: false }, discord: { bot_token: "", channel_ids: "", enabled: false } };
 
 function Status({ status }) {
   if (!status?.last_run) return null;
@@ -29,7 +29,7 @@ export default function IntegrationsPanel({ active, onItemsChanged, onAuthError 
       const next = await api.integrations();
       setData(next); setMinutes(next.syncMinutes);
       setForm({
-        llm: { api_key: "", model: next.llm.model || "" },
+        llm: { provider: next.llm.provider || "claude_code", oauth_token: "", api_key: "", model: next.llm.model || "" },
         gmail: { address: next.gmail.address || "", app_password: "", enabled: Boolean(next.gmail.enabled) },
         discord: { bot_token: "", channel_ids: next.discord.channel_ids || "", enabled: Boolean(next.discord.enabled) },
       });
@@ -75,12 +75,22 @@ export default function IntegrationsPanel({ active, onItemsChanged, onAuthError 
 
   return <>
     <form className="settings-card integration-card" onSubmit={(event) => save("llm", event)}>
-      <h2>Claude API (AI 기능)</h2>
-      <p className="info-callout">노트 요약·질문과 메일·디스코드 일정 추출에 씁니다. <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer noopener">Anthropic 콘솔</a>에서 키를 만드세요.</p>
-      <label className="integration-field"><span>API 키 {data.llm.secrets.api_key && <em>저장됨 {data.llm.secrets.api_key}</em>}</span><input type="password" autoComplete="off" placeholder={data.llm.secrets.api_key ? "바꿀 때만 입력" : "sk-ant-..."} {...field("llm", "api_key")} /></label>
+      <h2>Claude 연결 (AI 기능)</h2>
+      <p className="info-callout">노트 요약·질문과 메일·디스코드 일정 추출에 씁니다. 메시지 내용은 도구를 모두 끈 상태로만 Claude에게 전달됩니다.</p>
+      <label className="integration-field"><span>연결 방식</span>
+        <select {...field("llm", "provider")}><option value="claude_code">Claude Code 구독 (Pro/Max)</option><option value="api">Claude API 키 (사용량 과금)</option></select>
+      </label>
+      {form.llm.provider === "claude_code" ? <>
+        <p className="info-callout">Claude Code가 설치된 컴퓨터의 터미널에서 <code>claude setup-token</code>을 실행하고, 브라우저 로그인 뒤 나오는 토큰을 붙여 넣으세요. 사용량은 구독 한도에서 차감됩니다.</p>
+        <label className="integration-field"><span>Claude Code 토큰 {data.llm.secrets.oauth_token && <em>저장됨 {data.llm.secrets.oauth_token}</em>}</span><input type="password" autoComplete="off" placeholder={data.llm.secrets.oauth_token ? "바꿀 때만 입력" : "sk-ant-oat01-..."} {...field("llm", "oauth_token")} /></label>
+      </> : <>
+        <p className="info-callout"><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer noopener">Anthropic 콘솔</a>에서 키를 만드세요.</p>
+        <label className="integration-field"><span>API 키 {data.llm.secrets.api_key && <em>저장됨 {data.llm.secrets.api_key}</em>}</span><input type="password" autoComplete="off" placeholder={data.llm.secrets.api_key ? "바꿀 때만 입력" : "sk-ant-..."} {...field("llm", "api_key")} /></label>
+      </>}
       <label className="integration-field"><span>모델</span><input type="text" placeholder="claude-opus-5-5" {...field("llm", "model")} /></label>
       <div className="integration-actions">
-        {data.llm.secrets.api_key && <button className="text-button" type="button" onClick={() => clearSecret("llm", "api_key")}>키 지우기</button>}
+        {form.llm.provider === "claude_code" && data.llm.secrets.oauth_token && <button className="text-button" type="button" onClick={() => clearSecret("llm", "oauth_token")}>토큰 지우기</button>}
+        {form.llm.provider === "api" && data.llm.secrets.api_key && <button className="text-button" type="button" onClick={() => clearSecret("llm", "api_key")}>키 지우기</button>}
         <button className="add-button" type="submit" disabled={busy === "llm-save"}>{busy === "llm-save" ? "확인 중…" : "저장하고 확인"}</button>
       </div>
       {note("llm")}

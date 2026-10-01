@@ -17,9 +17,9 @@ import secretbox
 from db import pool
 
 NAMES = ("llm", "gmail", "discord")
-SECRET_FIELDS = {"llm": ("api_key",), "gmail": ("app_password",), "discord": ("bot_token",)}
+SECRET_FIELDS = {"llm": ("api_key", "oauth_token"), "gmail": ("app_password",), "discord": ("bot_token",)}
 CONFIG_FIELDS = {
-    "llm": ("model",),
+    "llm": ("model", "provider"),
     "gmail": ("enabled", "address"),
     "discord": ("enabled", "channel_ids"),
 }
@@ -80,6 +80,7 @@ def public_view() -> dict:
         config, secrets, status = load(name)
         masked = {f: (f"••••{secrets[f][-4:]}" if secrets.get(f) else "") for f in SECRET_FIELDS[name]}
         result[name] = {**config, "secrets": masked, "status": status}
+    result["llm"]["provider"] = llm.provider(result["llm"])
     if not result["llm"].get("model"):
         result["llm"]["model"] = llm.DEFAULT_MODEL
     return result
@@ -249,8 +250,8 @@ def sync(only: str | None = None) -> dict:
                 continue
             stamp = datetime.now(timezone.utc).isoformat()
             try:
-                if not llm_cfg.get("api_key"):
-                    raise ValueError("먼저 LLM API 키를 등록해 주세요.")
+                if not llm_cfg.get("oauth_token" if llm.provider(llm_cfg) == "claude_code" else "api_key"):
+                    raise ValueError("먼저 설정 화면에서 Claude 연결을 등록해 주세요.")
                 count = runner(llm_cfg)
                 results[name] = {"ok": True, "added": count}
                 set_status(name, {"last_run": stamp, "last_error": "", "last_added": count})
@@ -267,7 +268,8 @@ def test(name: str) -> str:
     config, secrets, _ = load(name)
     if name == "llm":
         llm.test_key({**config, **secrets})
-        return f"Claude 연결됨 ({config.get('model') or llm.DEFAULT_MODEL})"
+        how = "Claude Code 구독" if llm.provider(config) == "claude_code" else "API 키"
+        return f"Claude 연결됨 · {how} · {config.get('model') or llm.DEFAULT_MODEL}"
     if name == "gmail":
         imap = _gmail_connect(config, secrets)
         imap.logout()
