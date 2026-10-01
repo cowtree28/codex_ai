@@ -16,10 +16,9 @@ import llm
 import secretbox
 from db import pool
 
-NAMES = ("llm", "gmail", "discord")
-SECRET_FIELDS = {"llm": ("api_key", "oauth_token"), "gmail": ("app_password",), "discord": ("bot_token",)}
+NAMES = ("gmail", "discord")
+SECRET_FIELDS = {"gmail": ("app_password",), "discord": ("bot_token",)}
 CONFIG_FIELDS = {
-    "llm": ("model", "provider"),
     "gmail": ("enabled", "address"),
     "discord": ("enabled", "channel_ids"),
 }
@@ -80,9 +79,6 @@ def public_view() -> dict:
         config, secrets, status = load(name)
         masked = {f: (f"••••{secrets[f][-4:]}" if secrets.get(f) else "") for f in SECRET_FIELDS[name]}
         result[name] = {**config, "secrets": masked, "status": status}
-    result["llm"]["provider"] = llm.provider(result["llm"])
-    if not result["llm"].get("model"):
-        result["llm"]["model"] = llm.DEFAULT_MODEL
     return result
 
 
@@ -150,7 +146,7 @@ def _gmail_connect(config: dict, secrets: dict) -> imaplib.IMAP4_SSL:
     return imap
 
 
-def run_gmail(llm_cfg: dict) -> int:
+def run_gmail() -> int:
     config, secrets, _ = load("gmail")
     imap = _gmail_connect(config, secrets)
     added = 0
@@ -172,7 +168,7 @@ def run_gmail(llm_cfg: dict) -> int:
             _, body = imap.uid("fetch", uid, "(BODY.PEEK[])")
             message = email.message_from_bytes(body[0][1], policy=email_policy)
             text = f"보낸 사람: {message['from']}\n제목: {message['subject']}\n날짜: {message['date']}\n\n{_plain_text(message)}"
-            events = llm.extract_events(llm_cfg, "Gmail", text)
+            events = llm.extract_events("Gmail", text)
             added += _add_events("gmail", ref, events, f"메일: {message['subject'] or '(제목 없음)'}"[:120])
             handled += 1
     finally:
@@ -201,7 +197,7 @@ def _discord_get(token: str, path: str, params=None):
     return response.json()
 
 
-def run_discord(llm_cfg: dict) -> int:
+def run_discord() -> int:
     config, secrets, status = load("discord")
     token = secrets.get("bot_token")
     channels = _channel_ids(config)
@@ -226,7 +222,7 @@ def run_discord(llm_cfg: dict) -> int:
                 if _already(conn, "discord", ref):
                     continue
             text = f"작성자: {message['author'].get('global_name') or message['author']['username']}\n시각: {message['timestamp']}\n\n{message['content']}"
-            events = llm.extract_events(llm_cfg, "디스코드 채널", text)
+            events = llm.extract_events("디스코드 채널", text)
             added += _add_events("discord", ref, events, f"디스코드: {message['content'][:60]}")
     set_status("discord", {"last_ids": last_ids})
     return added
@@ -240,7 +236,6 @@ def sync(only: str | None = None) -> dict:
     if not _sync_lock.acquire(blocking=False):
         return {"busy": True}
     try:
-        llm_cfg = {**load("llm")[0], **load("llm")[1]}
         results = {}
         for name, runner in RUNNERS.items():
             config, _, _ = load(name)
@@ -250,9 +245,7 @@ def sync(only: str | None = None) -> dict:
                 continue
             stamp = datetime.now(timezone.utc).isoformat()
             try:
-                if not llm_cfg.get("oauth_token" if llm.provider(llm_cfg) == "claude_code" else "api_key"):
-                    raise ValueError("먼저 설정 화면에서 Claude 연결을 등록해 주세요.")
-                count = runner(llm_cfg)
+                count = runner()
                 results[name] = {"ok": True, "added": count}
                 set_status(name, {"last_run": stamp, "last_error": "", "last_added": count})
             except Exception as error:  # 한 연동이 실패해도 다른 연동은 계속한다.
@@ -266,10 +259,6 @@ def sync(only: str | None = None) -> dict:
 
 def test(name: str) -> str:
     config, secrets, _ = load(name)
-    if name == "llm":
-        llm.test_key({**config, **secrets})
-        how = "Claude Code 구독" if llm.provider(config) == "claude_code" else "API 키"
-        return f"Claude 연결됨 · {how} · {config.get('model') or llm.DEFAULT_MODEL}"
     if name == "gmail":
         imap = _gmail_connect(config, secrets)
         imap.logout()

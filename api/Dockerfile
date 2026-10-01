@@ -1,12 +1,13 @@
 FROM python:3.12-slim
+# 서버 사용자와 같은 UID로 실행해야 연결한 ~/wiki 파일을 읽을 수 있다.
+ARG APP_UID=1002
 ENV TZ=Asia/Seoul PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates bash \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd -m -u 1000 app
+    && useradd -m -u ${APP_UID} app
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-# Claude Code CLI (구독 토큰으로 AI 기능을 돌릴 때 사용). 도구는 끈 채로만 실행한다.
 USER app
 ENV HOME=/home/app PATH=/home/app/.local/bin:$PATH DISABLE_AUTOUPDATER=1
 RUN curl -fsSL https://claude.ai/install.sh | bash && claude --version

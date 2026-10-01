@@ -307,3 +307,21 @@ button:focus-visible, .schedule-status:focus-visible, .nav-item:focus-visible, .
   .notes-layout, .note-links { grid-template-columns: 1fr; }
   .ask-box { flex-direction: column; }
 }
+
+/* 위키 화면 */
+.wiki-topic { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13px; }
+.wiki-task { display: grid; gap: 8px; margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
+.wiki-task input, .wiki-task textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; resize: vertical; }
+.wiki-task .view-toggle { justify-self: start; }
+.wiki-task-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wiki-jobs { margin-bottom: 16px; }
+.wiki-jobs h3, .wiki-group h3 { margin: 10px 0 6px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.wiki-jobs ul { margin: 0; padding: 0; list-style: none; }
+.wiki-job { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.wiki-job:hover, .wiki-job.is-active { background: var(--hover); }
+.wiki-job small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.job-status { flex: 0 0 auto; padding: 1px 6px; border-radius: 4px; background: var(--hover); color: var(--muted); font-size: 11px; }
+.job-status.status-running, .job-status.status-queued { background: #eef0fd; color: #5e6ad2; }
+.job-status.status-done { background: #e8f5f0; color: #36947a; }
+.job-status.status-error { background: #fbeaea; color: #b4232c; }
+.wiki-group + .wiki-group { margin-top: 6px; }

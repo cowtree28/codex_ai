@@ -3,17 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, clearToken, getToken, setToken } from "./api";
 import IntegrationsPanel from "./IntegrationsPanel";
-import NotesView from "./NotesView";
+import WikiView from "./WikiView";
 import { ALERT_KEY, addDays, categories, completedRecords, dateFromISO, formatDay, loadItems, loadSettings, localISO, occurrencesOn, repeatLabels, statuses, todayEntries } from "./planner";
 
 const emptyForm = { title: "", memo: "", date: "", time: "", repeat: "none", category: "공부" };
-const viewNames = { today: "오늘", calendar: "캘린더", records: "기록", notes: "노트", settings: "설정" };
+const viewNames = { today: "오늘", calendar: "캘린더", records: "기록", wiki: "위키", settings: "설정" };
 const sourceLabels = { gmail: "메일", discord: "디스코드" };
 const icons = {
   today: <><path d="M4 5.5h16v13H4zM8 3.5v4M16 3.5v4M4 9.5h16" /><path d="m9 14 2 2 4-4" /></>,
   calendar: <><path d="M4 5.5h16v14H4zM8 3.5v4M16 3.5v4M4 9.5h16M8 13h2M14 13h2M8 16.5h2" /></>,
   records: <><path d="M5 4.5h14v15H5zM8.5 9h7M8.5 12.5h7M8.5 16h4" /></>,
-  notes: <><path d="M6 3.5h9l3 3v14H6z" /><path d="M9 10h6M9 13.5h6M9 17h3" /></>,
+  wiki: <><path d="M6 3.5h9l3 3v14H6z" /><path d="M9 10h6M9 13.5h6M9 17h3" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4" /></>,
 };
 
@@ -25,7 +25,7 @@ function Entry({ entry, onStatus, onEdit, onDelete, onNote }) {
     <span className="source-icon" aria-label={sourceName} title={item.sourceRef || sourceName}>{item.source === "gmail" ? "✉" : item.source === "discord" ? "#" : item.repeat && item.repeat !== "none" ? "↻" : "•"}</span>
     <select className="schedule-status" aria-label={`${item.title} 상태`} value={status} onChange={(event) => onStatus(item, day, event.target.value)}>{statuses.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select>
     <div className="schedule-details"><span className="schedule-title">{item.title}</span><small className="schedule-meta">{meta.map((value, index) => <span className="meta-token" key={`${value}-${index}`}>{value}</span>)}</small>{item.memo && <span className="schedule-memo">{item.memo}</span>}</div>
-    {onNote && <button className="text-button" type="button" aria-label={`${item.title} 노트`} onClick={() => onNote(item)}>노트</button>}<button className="text-button" type="button" aria-label={`${item.title} 수정`} onClick={() => onEdit(item)}>수정</button>
+    {onNote && <button className="text-button" type="button" aria-label={`${item.title} 위키에 기록`} onClick={() => onNote(item)}>위키</button>}<button className="text-button" type="button" aria-label={`${item.title} 수정`} onClick={() => onEdit(item)}>수정</button>
     <button className="delete-button" type="button" aria-label={`${item.title} 삭제`} onClick={() => onDelete(item)}>삭제</button>
   </li>;
 }
@@ -42,7 +42,7 @@ export default function Planner() {
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [syncError, setSyncError] = useState("");
-  const [noteRequest, setNoteRequest] = useState(null); // 일정에서 노트를 열 때 {title, itemId}
+  const [wikiRequest, setWikiRequest] = useState(null); // 일정을 위키에 기록할 때 {title, text}
   const [settings, setSettings] = useState({ dayBefore: false, night: false });
   const [permission, setPermission] = useState("default");
   const [settingError, setSettingError] = useState("");
@@ -109,7 +109,11 @@ export default function Planner() {
   async function reloadItems() {
     try { setItems(await api.items()); } catch (error) { if (error.status === 401) authLost(); }
   }
-  function openItemNote(item) { setNoteRequest({ title: item.title, itemId: item.id }); setView("notes"); }
+  function openItemNote(item) {
+    const when = [item.date, item.time].filter(Boolean).join(" ");
+    setWikiRequest({ title: item.title, text: `일정: ${item.title}${when ? ` (${when})` : ""}\n카테고리: ${item.category || "기타"}${item.memo ? `\n메모: ${item.memo}` : ""}\n` });
+    setView("wiki");
+  }
   function markReviewed(ids) {
     const now = new Date().toISOString();
     commitItems(items.map((item) => ids.includes(item.id) ? { ...item, aiReviewed: true, updatedAt: now } : item));
@@ -310,7 +314,7 @@ export default function Planner() {
       </section>
       <section id="records-view" className="page-view" aria-labelledby="records-heading" hidden={view !== "records"}><header className="page-header"><h1 id="records-heading">기록</h1></header><div className="period-switch" role="group" aria-label="기록 기간">{[["week", "주간"], ["month", "월간"]].map(([key, label]) => <button key={key} className={`view-button ${recordPeriod === key ? "is-active" : ""}`} type="button" aria-pressed={recordPeriod === key} onClick={() => setRecordPeriod(key)}>{label}</button>)}</div><div className="record-summary"><span>선택한 기간에 완료한 일정</span><strong>{records.length}개</strong></div><section className="record-section" aria-labelledby="timeline-heading"><h2 id="timeline-heading">날짜별 타임라인</h2><div className="timeline-graph">{recordDates.map((day) => { const done = records.filter((record) => record.day === day); return <div className="timeline-row" key={day}><span>{formatDay(day)}</span><div className="graph-track"><div className="graph-bar done-bar" style={{ width: `${done.length / maxRecords * 100}%` }} /></div><strong>{done.length}개</strong>{done.length > 0 && <small>{done.map((record) => record.title).join(" · ")}</small>}</div>; })}</div></section><section className="record-section" aria-labelledby="category-heading"><h2 id="category-heading">카테고리별 비율</h2><div className="category-graph">{categories.map((category) => <GraphRow key={category} label={category} count={records.filter((record) => record.category === category).length} total={records.length} barClass="category-bar" percent />)}</div></section></section>
       <section id="settings-view" className="page-view" aria-labelledby="settings-heading" hidden={view !== "settings"}><header className="page-header"><h1 id="settings-heading">설정</h1></header><div className="settings-card"><h2>브라우저 알림</h2><p className="info-callout">알림은 브라우저가 열려 있을 때만 작동합니다. 오전 8시 요약, 일정 1시간·10분 전 알림.</p><button className="add-button" type="button" disabled={permission === "granted" || permission === "unsupported"} onClick={requestNotifications}>알림 허용</button><p className="settings-status" aria-live="polite">{settingError || (permission === "unsupported" ? "이 브라우저는 알림을 지원하지 않습니다." : permission === "granted" ? "알림 허용됨" : permission === "denied" ? "브라우저 설정에서 알림 권한을 바꿔 주세요." : "")}</p><div className="setting-options"><label><input type="checkbox" checked={settings.dayBefore} onChange={(event) => saveSettings({ ...settings, dayBefore: event.target.checked })} /> 하루 전 오후 8시 알림</label><label><input type="checkbox" checked={settings.night} onChange={(event) => saveSettings({ ...settings, night: event.target.checked })} /> 밤 9시 미완료 일정 알림</label></div></div><div className="settings-card"><h2>계정</h2><p className="info-callout">일정은 서버에 저장되어 어느 기기에서든 같은 비밀번호로 볼 수 있습니다.</p><button className="text-button" type="button" onClick={logout}>이 기기에서 로그아웃</button></div><IntegrationsPanel active={view === "settings"} onItemsChanged={reloadItems} onAuthError={authLost} /></section>
-      <NotesView active={view === "notes"} items={items} onAuthError={authLost} request={noteRequest} onRequestHandled={() => setNoteRequest(null)} />
+      <WikiView active={view === "wiki"} onAuthError={authLost} request={wikiRequest} onRequestHandled={() => setWikiRequest(null)} />
     </div></div>
   </main>;
 }

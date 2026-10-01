@@ -20,15 +20,6 @@ CREATE TABLE IF NOT EXISTS settings (
     value JSONB NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE TABLE IF NOT EXISTS notes (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    body TEXT NOT NULL DEFAULT '',
-    item_id TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE UNIQUE INDEX IF NOT EXISTS notes_title_lower ON notes (lower(title));
 CREATE TABLE IF NOT EXISTS integrations (
     name TEXT PRIMARY KEY,
     config JSONB NOT NULL DEFAULT '{}',

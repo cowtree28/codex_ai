@@ -12,12 +12,19 @@ services:
       - api
 
   api:
-    build: ./api
+    build:
+      context: ./api
+      args:
+        APP_UID: ${APP_UID:-1002}
     restart: unless-stopped
+    volumes:
+      # 서버의 llm-wiki 허브 폴더를 읽기 전용으로 연결한다.
+      - ${WIKI_HUB_DIR:-${HOME}/wiki}:/wiki:ro
     environment:
       DATABASE_URL: postgresql://check:${POSTGRES_PASSWORD}@db:5432/check
       APP_PASSWORD: ${APP_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET}
+      WIKI_HUB: /wiki
     depends_on:
       db:
         condition: service_healthy
