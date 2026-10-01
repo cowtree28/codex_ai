@@ -1,5 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
-const STORAGE_KEY = "check-schedules-v1";
+const STORAGE_KEY = "study-planner-items";
+const LEGACY_STORAGE_KEY = "check-schedules-v1";
 const ALERT_KEY = "check-alerts-v1";
 const SETTINGS_KEY = "check-settings-v1";
 const statuses = [
@@ -39,11 +40,26 @@ function formatDay(value) {
 
 function loadItems() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    return Array.isArray(saved) ? saved.filter((item) => item && typeof item.id === "string" && typeof item.title === "string") : [];
+    const current = localStorage.getItem(STORAGE_KEY);
+    if (current !== null) return parseItems(current);
+
+    // 이전 버전의 일정을 새 저장 키로 한 번 옮긴다.
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy === null) return [];
+    const migrated = parseItems(legacy);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch { /* 저장이 막혀도 읽은 일정은 화면에 보여준다. */ }
+    return migrated;
   } catch {
     return [];
   }
+}
+
+function parseItems(raw) {
+  const saved = JSON.parse(raw);
+  return Array.isArray(saved) ? saved.filter((item) => item && typeof item.id === "string" && typeof item.title === "string") : [];
 }
 
 function loadSettings() {
@@ -63,6 +79,7 @@ let calendarCursor = dateFromISO(selectedDate);
 calendarCursor.setDate(1);
 let recordPeriod = "week";
 let currentView = "today";
+
 
 // 저장에 실패하면 화면에서 이유를 알려준다.
 function saveItems() {
@@ -88,6 +105,8 @@ function clearFormError() {
 function resetForm() {
   editingId = null;
   $("#schedule-form").reset();
+  $("#form-more").open = false;
+  $("#schedule-form").classList.remove("is-editing");
   $("#form-heading").textContent = "새 일정";
   $("#submit-button").textContent = "추가";
   $("#cancel-edit").hidden = true;
@@ -96,6 +115,8 @@ function resetForm() {
 
 function startEdit(item) {
   editingId = item.id;
+  $("#form-more").open = true;
+  $("#schedule-form").classList.add("is-editing");
   $("#schedule-title").value = item.title;
   $("#schedule-date").value = item.date || "";
   $("#schedule-time").value = item.time || "";
@@ -233,20 +254,49 @@ function renderToday() {
   $("#today-date").textContent = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" }).format(dateFromISO(today));
   $("#today-date").dateTime = today;
   const entries = todayEntries();
+  const filter = $("#filter-status").value;
+  const visibleEntries = filter === "all" ? entries : entries.filter(({ status }) => status === filter);
   const remaining = entries.filter(({ status }) => !["done", "canceled"].includes(status)).length;
   $("#today-remaining").textContent = `${remaining}개`;
   $("#total-count").textContent = `${items.length}개`;
   $("#done-count-summary").textContent = `${entries.filter(({ status }) => status === "done").length}개`;
-  $("#schedule-count").textContent = `${entries.length}개`;
-  $("#empty-message").hidden = entries.length > 0;
+  $("#schedule-count").textContent = `${visibleEntries.length}개`;
+  $("#empty-message").textContent = filter === "all" ? "일정 없음" : "해당 상태의 일정 없음";
+  $("#empty-message").hidden = visibleEntries.length > 0;
   $("#graph-empty-message").hidden = entries.length > 0;
   $("#graph-content").hidden = entries.length === 0;
-  $("#schedule-list").replaceChildren(...entries.map(makeEntry));
+  $("#schedule-list").replaceChildren(...visibleEntries.map(makeEntry));
   statuses.forEach(({ value }) => {
     const count = entries.filter(({ status }) => status === value).length;
     $(`#${value}-count`).textContent = `${count}개`;
     $(`#${value}-bar`).style.width = entries.length ? `${(count / entries.length) * 100}%` : "0%";
   });
+}
+
+// 사이드바에서 제목으로 일정을 찾고 바로 수정할 수 있게 한다.
+function renderSidebar() {
+  const query = $("#sidebar-search").value.trim().toLocaleLowerCase();
+  $("#recent-heading").textContent = query ? "검색 결과" : "최근 일정";
+  const matches = [...items]
+    .filter((item) => item.title.toLocaleLowerCase().includes(query))
+    .sort((a, b) => (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || ""))
+    .slice(0, 6);
+  const container = $("#recent-items");
+  if (!matches.length) {
+    const message = document.createElement("p");
+    message.className = "recent-empty";
+    message.textContent = query ? "검색 결과 없음" : "일정 없음";
+    container.replaceChildren(message);
+    return;
+  }
+  container.replaceChildren(...matches.map((item) => {
+    const button = document.createElement("button");
+    button.className = "recent-item";
+    button.type = "button";
+    button.textContent = item.title;
+    button.addEventListener("click", () => startEdit(item));
+    return button;
+  }));
 }
 
 function renderSelectedDay() {
@@ -314,8 +364,6 @@ function renderRecords() {
   const dates = Array.from({ length: days }, (_, index) => localISO(new Date(start.getFullYear(), start.getMonth(), start.getDate() + index)));
   const records = completedRecords().filter(({ day }) => dates.includes(day));
   $("#record-total").textContent = `${records.length}개`;
-  const categoryParts = categories.map((category) => ({ category, count: records.filter((record) => record.category === category).length })).filter(({ count }) => count > 0);
-  $("#record-line").textContent = categoryParts.length ? `이번 ${recordPeriod === "week" ? "주" : "달"}에는 ${categoryParts.map(({ category, count }) => `${category} ${count}개`).join(", ")}를 마쳤습니다.` : "아직 완료한 일정이 없습니다.";
   const timeline = $("#timeline-graph");
   timeline.replaceChildren();
   const max = Math.max(1, ...dates.map((day) => records.filter((record) => record.day === day).length));
@@ -370,11 +418,12 @@ function renderSettings() {
     $("#notification-status").textContent = "이 브라우저는 알림을 지원하지 않습니다.";
   } else {
     $("#notification-button").disabled = Notification.permission === "granted";
-    $("#notification-status").textContent = Notification.permission === "granted" ? "알림이 허용되었습니다." : Notification.permission === "denied" ? "브라우저 설정에서 알림 권한을 바꿔 주세요." : "알림 권한을 허용하면 안내를 받을 수 있습니다.";
+    $("#notification-status").textContent = Notification.permission === "granted" ? "알림 허용됨" : Notification.permission === "denied" ? "브라우저 설정에서 알림 권한을 바꿔 주세요." : "";
   }
 }
 
 function renderAll() {
+  renderSidebar();
   renderToday();
   renderCalendar();
   renderRecords();
@@ -451,6 +500,14 @@ $("#schedule-form").addEventListener("submit", (event) => {
 });
 
 $("#cancel-edit").addEventListener("click", resetForm);
+// 어느 화면에서든 새 일정 입력칸으로 바로 이동한다.
+$("#quick-add").addEventListener("click", () => {
+  resetForm();
+  showPage("today");
+  $("#schedule-title").focus();
+});
+$("#sidebar-search").addEventListener("input", renderSidebar);
+$("#filter-status").addEventListener("change", renderToday);
 document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => showPage(button.dataset.view)));
 $("#previous-month").addEventListener("click", () => { calendarCursor.setMonth(calendarCursor.getMonth() - 1); selectedDate = localISO(calendarCursor); renderCalendar(); });
 $("#next-month").addEventListener("click", () => { calendarCursor.setMonth(calendarCursor.getMonth() + 1); selectedDate = localISO(calendarCursor); renderCalendar(); });
@@ -470,6 +527,7 @@ $("#graph-view-button").addEventListener("click", () => showListMode(false));
 function showListMode(showList) {
   $("#list-view").hidden = !showList;
   $("#graph-view").hidden = showList;
+  $("#status-filter-field").hidden = !showList;
   $("#list-view-button").classList.toggle("is-active", showList);
   $("#graph-view-button").classList.toggle("is-active", !showList);
   $("#list-view-button").setAttribute("aria-pressed", String(showList));
