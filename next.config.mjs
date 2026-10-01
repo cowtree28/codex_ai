@@ -5,7 +5,7 @@ const basePath = process.env.BASE_PATH || (process.env.GITHUB_PAGES === "true" ?
 const nextConfig = {
   output: "export",
   basePath,
-  env: { NEXT_PUBLIC_BASE_PATH: basePath },
+  env: { NEXT_PUBLIC_BASE_PATH: basePath, NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || "" },
 };
 
 export default nextConfig;

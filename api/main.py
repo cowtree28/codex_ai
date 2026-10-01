@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
@@ -46,6 +47,16 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="check API", lifespan=lifespan, docs_url=None, redoc_url=None)
+# GitHub Pages(https://cowtree28.github.io)에서 여는 화면이 이 API를 부를 수 있게 허용한다.
+# 쿠키 없이 Authorization 헤더로만 로그인하므로 credentials는 허용하지 않는다.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in os.environ.get("CORS_ORIGINS", "https://cowtree28.github.io").split(",") if o.strip()],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+    expose_headers=["X-Server-Time", "Content-Disposition"],
+    max_age=600,
+)
 
 
 def require_auth(request: Request) -> None:

@@ -1,5 +1,6 @@
 // 서버 API와 통신한다. 로그인 토큰은 이 브라우저에만 저장한다.
-export const BASE = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api`;
+// GitHub Pages처럼 다른 주소에서 열 때는 NEXT_PUBLIC_API_URL(집 서버 API)로 보낸다.
+export const BASE = process.env.NEXT_PUBLIC_API_URL || `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api`;
 const TOKEN_KEY = "check-session-token";
 let serverTime = ""; // 마지막으로 일정을 받은 서버 시각. 저장할 때 함께 보낸다.
 

@@ -100,7 +100,10 @@ docker compose --env-file .env up -d --build
 
 ## 9. 배포 주소
 
-https://cowtree28-server.duckdns.org/check/
+- 집 서버: https://cowtree28-server.duckdns.org/check/
+- GitHub Pages: https://cowtree28.github.io/codex_ai/
+
+두 주소 모두 같은 집 서버 API와 DB를 씁니다. 어느 쪽으로 들어가도 같은 비밀번호로 같은 일정과 노트가 보입니다. Pages는 화면만 올리고, 로그인과 저장은 집 서버로 요청합니다.
 
 집 서버에서 Docker Compose로 웹(nginx), API(FastAPI), DB(Postgres)를 돌립니다. GitHub `main`에 푸시하면 서버의 `deploy/deploy.sh`가 2분 안에 새 커밋을 받아 다시 빌드합니다. GitHub Actions는 푸시마다 빌드가 깨지지 않았는지만 검사합니다.
 
