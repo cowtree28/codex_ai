@@ -99,6 +99,8 @@ docker compose --env-file .env up -d --build
 
 ## 9. 배포 주소
 
+> 2026-10-01에 집 서버 배포를 내렸습니다. 다시 띄우는 방법은 [docs/deploy-home-server.md](docs/deploy-home-server.md)에 있습니다. 서버가 꺼져 있으면 아래 주소에서 로그인할 수 없습니다.
+
 - 집 서버: https://cowtree28-server.duckdns.org/check/
 - GitHub Pages: https://cowtree28.github.io/codex_ai/
 
