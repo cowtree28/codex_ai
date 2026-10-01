@@ -222,7 +222,13 @@ function makeEntry(entry) {
   title.textContent = item.title;
   const meta = document.createElement("small");
   meta.className = "schedule-meta";
-  meta.textContent = [day ? formatDay(day) : "날짜 없음", item.time || "", item.category || "기타", repeatLabels[item.repeat] || "직접 추가"].filter(Boolean).join(" · ");
+  // 실제 일정에 있는 속성만 짧은 칩으로 보여준다.
+  [day ? formatDay(day) : "날짜 없음", item.time, item.category || "기타", repeatLabels[item.repeat]].filter(Boolean).forEach((value) => {
+    const token = document.createElement("span");
+    token.className = "meta-token";
+    token.textContent = value;
+    meta.append(token);
+  });
   details.append(title, meta);
   if (item.memo) {
     const memo = document.createElement("span");

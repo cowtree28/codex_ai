@@ -30,11 +30,6 @@
           <section id="today-view" class="page-view" aria-labelledby="today-heading">
             <header class="page-header">
               <div class="header-row"><h1 id="today-heading">오늘 일정</h1><time id="today-date"></time></div>
-              <div class="summary-strip" aria-label="일정 요약">
-                <div><span>오늘 남은 일정</span><strong id="today-remaining">0개</strong></div>
-                <div><span>전체 일정</span><strong id="total-count">0개</strong></div>
-                <div><span>완료한 일정</span><strong id="done-count-summary">0개</strong></div>
-              </div>
             </header>
 
             <section class="schedule-panel" aria-labelledby="schedule-heading">
@@ -57,6 +52,11 @@
 
               <div class="list-heading">
                 <div class="list-title"><h3>일정 목록</h3><span id="schedule-count" aria-live="polite">0개</span></div>
+                <div class="summary-strip" aria-label="일정 요약">
+                  <div><span>남은 일정</span><strong id="today-remaining">0개</strong></div>
+                  <div><span>전체</span><strong id="total-count">0개</strong></div>
+                  <div><span>완료</span><strong id="done-count-summary">0개</strong></div>
+                </div>
                 <div class="list-actions"><label id="status-filter-field" class="filter-field" for="filter-status">상태<select id="filter-status"><option value="all">전체</option><option value="backlog">대기</option><option value="todo">할 일</option><option value="progress">진행 중</option><option value="done">완료</option><option value="canceled">취소</option></select></label><div class="view-switch" role="group" aria-label="일정 보기 방식"><button id="list-view-button" class="view-button is-active" type="button" aria-pressed="true">목록</button><button id="graph-view-button" class="view-button" type="button" aria-pressed="false">그래프</button></div></div>
               </div>
               <div id="list-view"><p id="empty-message" class="empty-message">일정 없음</p><ul id="schedule-list" class="schedule-list" aria-label="오늘 일정 목록"></ul></div>
